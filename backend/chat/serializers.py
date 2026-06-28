@@ -22,7 +22,10 @@ class MessageSerializer(serializers.ModelSerializer):
         return bool(request and obj.sender_id == request.user.id)
 
     def create(self, validated_data):
-        validated_data['sender'] = self.context['request'].user
+        request = self.context.get('request')
+        if not request or not request.user or not request.user.is_authenticated:
+            raise serializers.ValidationError('Authenticated user is required to send a message.')
+        validated_data['sender'] = request.user
         if validated_data.get('attachment') and not validated_data.get('attachment_name'):
             validated_data['attachment_name'] = validated_data['attachment'].name
             validated_data['message_type'] = 'file'
@@ -40,18 +43,25 @@ class ConversationSerializer(serializers.ModelSerializer):
         fields = ['id', 'partner_id', 'partner_name', 'last_message', 'unread_count', 'created_at']
 
     def get_partner(self, obj):
-        return obj.other(self.context['request'].user)
+        request = self.context.get('request')
+        if not request or not request.user or not request.user.is_authenticated:
+            return None
+        return obj.other(request.user)
 
     def get_partner_id(self, obj):
-        return self.get_partner(obj).id
+        partner = self.get_partner(obj)
+        return partner.id if partner else None
 
     def get_partner_name(self, obj):
-        return self.get_partner(obj).name
+        partner = self.get_partner(obj)
+        return partner.name if partner else None
 
     def get_last_message(self, obj):
         last = obj.messages.order_by('-created_at').first()
         return MessageSerializer(last, context=self.context).data if last else None
 
     def get_unread_count(self, obj):
-        request = self.context['request']
+        request = self.context.get('request')
+        if not request or not request.user or not request.user.is_authenticated:
+            return 0
         return obj.messages.filter(is_read=False).exclude(sender=request.user).count()
