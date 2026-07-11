@@ -26,11 +26,18 @@ SECRET_KEY = config(
     default='django-insecure-7vw#change-this-key-in-production-use-env-var'
 )
 DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=Csv())
 
 # --------------------------------------------------------------------------
 # Applications
 # --------------------------------------------------------------------------
+# Detect if channels/redis packages are available (not available on Vercel)
+try:
+    import channels  # noqa: F401
+    _CHANNELS_AVAILABLE = True
+except ImportError:
+    _CHANNELS_AVAILABLE = False
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -44,7 +51,6 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
-    'channels',
     'django_filters',
 
     # Project modules
@@ -56,10 +62,11 @@ INSTALLED_APPS = [
     'progress',
     'ai_assistant',
     'notifications',
-]
+] + (['channels'] if _CHANNELS_AVAILABLE else [])
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',   # Serve static files on Vercel
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -87,7 +94,8 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
-ASGI_APPLICATION = 'config.asgi.application'
+if _CHANNELS_AVAILABLE:
+    ASGI_APPLICATION = 'config.asgi.application'
 
 # --------------------------------------------------------------------------
 # Database
@@ -138,6 +146,8 @@ USE_TZ = True
 # Static & media files
 # --------------------------------------------------------------------------
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'           # Vercel / whitenoise
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
@@ -171,11 +181,19 @@ SIMPLE_JWT = {
 # --------------------------------------------------------------------------
 # CORS (React dev server)
 # --------------------------------------------------------------------------
-CORS_ALLOWED_ORIGINS = config(
+_cors_origins = config(
     'CORS_ALLOWED_ORIGINS',
-    default='http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173',
+    default='',
     cast=Csv()
 )
+
+# If no specific origins are set, allow ALL origins (safe for public APIs).
+# Set CORS_ALLOWED_ORIGINS in your environment to restrict to specific domains.
+if _cors_origins:
+    CORS_ALLOWED_ORIGINS = _cors_origins
+else:
+    CORS_ALLOW_ALL_ORIGINS = True
+
 CORS_ALLOW_CREDENTIALS = True
 
 # --------------------------------------------------------------------------
@@ -183,21 +201,22 @@ CORS_ALLOW_CREDENTIALS = True
 # Set USE_REDIS=True once Redis is running (required for production /
 # multi-process deployments). Defaults to in-memory layer for local dev.
 # --------------------------------------------------------------------------
-if config('USE_REDIS', default=False, cast=bool):
-    CHANNEL_LAYERS = {
-        'default': {
-            'BACKEND': 'channels_redis.core.RedisChannelLayer',
-            'CONFIG': {
-                'hosts': [config('REDIS_URL', default='redis://127.0.0.1:6379/0')],
+if _CHANNELS_AVAILABLE:
+    if config('USE_REDIS', default=False, cast=bool):
+        CHANNEL_LAYERS = {
+            'default': {
+                'BACKEND': 'channels_redis.core.RedisChannelLayer',
+                'CONFIG': {
+                    'hosts': [config('REDIS_URL', default='redis://127.0.0.1:6379/0')],
+                },
             },
-        },
-    }
-else:
-    CHANNEL_LAYERS = {
-        'default': {
-            'BACKEND': 'channels.layers.InMemoryChannelLayer',
-        },
-    }
+        }
+    else:
+        CHANNEL_LAYERS = {
+            'default': {
+                'BACKEND': 'channels.layers.InMemoryChannelLayer',
+            },
+        }
 
 # --------------------------------------------------------------------------
 # AI provider keys (ai_assistant app)

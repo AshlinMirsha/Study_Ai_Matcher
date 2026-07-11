@@ -1,0 +1,15 @@
+# Root-level requirements.txt for Vercel Python build
+# Mirrors backend/requirements.txt but excludes packages that don't run on Vercel serverless:
+#   - channels, daphne, channels_redis, redis (WebSockets not supported on Vercel)
+
+Django~=5.0.0
+django-cors-headers==4.9.0
+django-filter
+djangorestframework
+djangorestframework_simplejwt
+google-generativeai==0.8.6
+psycopg[binary]
+python-decouple==3.8
+scikit-learn
+openai~=1.58.0
+whitenoise
