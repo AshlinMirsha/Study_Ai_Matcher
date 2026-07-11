@@ -103,7 +103,17 @@ if _CHANNELS_AVAILABLE:
 # Set DB_ENGINE=postgres in .env to switch to PostgreSQL (recommended for
 # real deployment).
 # --------------------------------------------------------------------------
-if config('DB_ENGINE', default='sqlite') == 'postgres':
+import dj_database_url
+
+if config('DATABASE_URL', default=''):
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=config('DATABASE_URL'),
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
+    }
+elif config('DB_ENGINE', default='sqlite') == 'postgres':
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
