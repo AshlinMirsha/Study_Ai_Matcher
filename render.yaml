@@ -1,7 +1,5 @@
 databases:
   - name: studymatcher-db
-    databaseName: study_ai_matcher
-    user: postgres
     plan: free
 
 services:
