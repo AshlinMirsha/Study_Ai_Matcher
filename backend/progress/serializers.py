@@ -1,6 +1,6 @@
 """progress app - serializers for Module 7: Progress Tracking."""
 from rest_framework import serializers
-from .models import StudyLog, CompletedTopic
+from .models import StudyLog, CompletedTopic, StudySchedule
 
 
 class StudyLogSerializer(serializers.ModelSerializer):
@@ -39,3 +39,15 @@ class DashboardSerializer(serializers.Serializer):
     top_match_score = serializers.FloatField()
     active_matches = serializers.IntegerField()
     pending_matches = serializers.IntegerField()
+
+class StudyScheduleSerializer(serializers.ModelSerializer):
+    subject_name = serializers.CharField(source='subject.name', read_only=True, default='')
+
+    class Meta:
+        model = StudySchedule
+        fields = ['id', 'subject', 'subject_name', 'day_of_week', 'start_time', 'end_time', 'expected_grade', 'notes']
+        read_only_fields = ['id']
+
+    def create(self, validated_data):
+        validated_data['student'] = self.context['request'].user
+        return super().create(validated_data)

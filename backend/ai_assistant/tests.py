@@ -12,3 +12,4 @@ class AIConfigurationTests(SimpleTestCase):
         self.assertEqual(settings.AI_PROVIDER, 'gemini')
         self.assertTrue(settings.GEMINI_API_KEY)
         self.assertTrue(is_ai_configured())
+

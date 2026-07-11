@@ -8,8 +8,8 @@ from rest_framework import generics, viewsets, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import StudyLog, CompletedTopic
-from .serializers import StudyLogSerializer, CompletedTopicSerializer, DashboardSerializer
+from .models import StudyLog, CompletedTopic, StudySchedule
+from .serializers import StudyLogSerializer, CompletedTopicSerializer, DashboardSerializer, StudyScheduleSerializer
 from matching.models import Match
 
 
@@ -29,6 +29,14 @@ class CompletedTopicViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return CompletedTopic.objects.filter(student=self.request.user)
+
+class StudyScheduleViewSet(viewsets.ModelViewSet):
+    """/api/progress/schedules/ - CRUD for timetable study schedules."""
+    serializer_class = StudyScheduleSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return StudySchedule.objects.filter(student=self.request.user)
 
 
 def _calculate_streaks(study_dates: set):
@@ -103,10 +111,17 @@ class DashboardView(APIView):
         return Response(DashboardSerializer(data).data)
 
 
+def _calculate_grade(hours):
+    if hours >= 100: return "A+"
+    if hours >= 50: return "A"
+    if hours >= 20: return "B"
+    if hours >= 10: return "C"
+    return "D"
+
 class LeaderboardView(APIView):
     """
     GET /api/progress/leaderboard/
-    Extra feature: ranks students by total study hours.
+    Ranks students by total study hours and assigns a Grade.
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -126,6 +141,7 @@ class LeaderboardView(APIView):
                 'name': row['student__name'],
                 'college': row['student__college'],
                 'total_hours': float(row['total_hours'] or 0),
+                'grade': _calculate_grade(float(row['total_hours'] or 0)),
             }
             for i, row in enumerate(rows)
         ]

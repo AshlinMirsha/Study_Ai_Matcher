@@ -39,3 +39,19 @@ class CompletedTopic(models.Model):
 
     def __str__(self):
         return f"{self.student.name} completed {self.topic_name} ({self.subject})"
+
+class StudySchedule(models.Model):
+    """A planned study session for the Timetable feature."""
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='study_schedules')
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, null=True, blank=True)
+    day_of_week = models.IntegerField(choices=[(i, i) for i in range(1, 8)], help_text="1=Monday, 7=Sunday")
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    expected_grade = models.CharField(max_length=5, blank=True, help_text="e.g. A, B+, 90%")
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['day_of_week', 'start_time']
+
+    def __str__(self):
+        return f"{self.student.name} - {self.day_of_week} {self.start_time}"

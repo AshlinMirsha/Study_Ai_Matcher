@@ -68,12 +68,25 @@ def chatbot_reply(student, history, user_message: str) -> str:
     msg = user_message.lower()
     if any(w in msg for w in ['hi', 'hello', 'hey']):
         return f"Hi {student.name.split()[0]}! What would you like to study today?"
+    if any(w in msg for w in ['how are you', 'how r you', 'how r u']):
+        return "I am doing great, thank you! I'm ready to help you study. What subject or topic are we working on today?"
+    if any(w in msg for w in ['who are you', 'your name']):
+        return "I am your Study AI Matcher Assistant! I can help you revise subjects, explain concepts (like binary search), or test your knowledge."
+    if any(w in msg for w in ['thank you', 'thanks']):
+        return "You're welcome! Let me know if you need anything else to help with your studies."
     if 'binary search' in msg:
         return "Binary search works on sorted arrays: compare the middle element, then recurse into the half that could contain your target. Time complexity is O(log n)."
     if 'python list' in msg:
         return "Python lists are ordered, mutable sequences. Key methods: append(), pop(), sort(), and slicing with list[start:end]."
     if 'help' in msg or 'suggest' in msg:
         return "I can suggest a study plan, explain a topic, or quiz you. What would you like?"
+    
+    # Check if a key was set but is hitting quota limits
+    from django.conf import settings
+    has_key = bool(settings.GEMINI_API_KEY) or bool(settings.OPENAI_API_KEY)
+    if has_key:
+        return "I'm currently running in offline mode because the configured API Key is exhausted or has no active quota. Please verify your API key's billing settings on your Google AI Studio or OpenAI developer dashboard. In the meantime, try asking about 'binary search' or 'python lists'!"
+    
     return "I'm currently running in offline mode (no AI key configured), so my answers are limited. Try asking about a specific topic like 'binary search' or 'python lists', or configure GEMINI_API_KEY/OPENAI_API_KEY for full AI answers."
 
 
@@ -133,3 +146,31 @@ def generate_quiz_questions(topic: str, num_questions=5) -> list[dict]:
             return bank[:num_questions]
     # generic fallback if topic isn't in the bank
     return _FALLBACK_QUIZ_BANK['python'][:num_questions]
+
+def generate_flashcards(topic: str, num_cards=10) -> list[dict]:
+    """
+    Returns a list of flashcard dicts:
+        {term, definition}
+    """
+    prompt = (
+        f"Create {num_cards} study flashcards about: {topic}. "
+        "Return a JSON array, each item shaped exactly like: "
+        '{"term": "...", "definition": "..."}'
+    )
+    ai_cards = generate_json(prompt)
+    if isinstance(ai_cards, list) and ai_cards:
+        valid = [
+            c for c in ai_cards
+            if isinstance(c, dict) and 'term' in c and 'definition' in c
+        ]
+        if valid:
+            return valid[:num_cards]
+
+    # Rule-based fallback
+    return [
+        {"term": "Python", "definition": "A high-level, interpreted programming language."},
+        {"term": "Binary Search", "definition": "A search algorithm that finds the position of a target value within a sorted array."},
+        {"term": "Django", "definition": "A high-level Python web framework that encourages rapid development."},
+        {"term": "React", "definition": "A JavaScript library for building user interfaces."},
+        {"term": "WebRTC", "definition": "A free, open-source project that provides web browsers with real-time communication (RTC)."}
+    ][:num_cards]

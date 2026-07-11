@@ -16,6 +16,9 @@ from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser
+import fitz
+from pptx import Presentation
 
 from profiles.models import StudentProfile, Subject
 from .models import StudySuggestion, ChatbotMessage, Quiz, QuizQuestion
@@ -162,3 +165,98 @@ class SubmitQuizView(APIView):
             'total_questions': questions.count(),
             'questions': QuizQuestionResultSerializer(questions, many=True).data,
         })
+
+class GenerateFileQuizView(APIView):
+    """POST /api/ai/quizzes/generate-from-file/ - AI quiz generation from a PDF/PPT file."""
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = (MultiPartParser, FormParser)
+
+    def post(self, request):
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response({"error": "No file provided."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        num_questions = int(request.data.get('num_questions', 5))
+        topic = request.data.get('topic', 'Uploaded Document')
+        
+        extracted_text = ""
+        filename = file_obj.name.lower()
+        
+        try:
+            if filename.endswith('.pdf'):
+                doc = fitz.open(stream=file_obj.read(), filetype="pdf")
+                for page in doc:
+                    extracted_text += page.get_text() + "\n"
+            elif filename.endswith('.ppt') or filename.endswith('.pptx'):
+                prs = Presentation(file_obj)
+                for slide in prs.slides:
+                    for shape in slide.shapes:
+                        if hasattr(shape, "text"):
+                            extracted_text += shape.text + "\n"
+            else:
+                return Response({"error": "Unsupported file format. Please upload PDF or PPT."}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": f"Error parsing file: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not extracted_text.strip():
+            return Response({"error": "No text could be extracted from the file."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        # truncate text if too long (AI context limit)
+        extracted_text = extracted_text[:10000]
+        
+        quiz = Quiz.objects.create(student=request.user, topic=topic)
+        prompt_topic = f"the following text extracted from a document: \\n\\n{extracted_text}"
+        questions_data = services.generate_quiz_questions(prompt_topic, num_questions)
+
+        for q in questions_data:
+            QuizQuestion.objects.create(
+                quiz=quiz,
+                question_text=q['question_text'],
+                option_a=q['option_a'], option_b=q['option_b'],
+                option_c=q['option_c'], option_d=q['option_d'],
+                correct_option=q['correct_option'],
+            )
+
+        return Response(QuizSerializer(quiz).data, status=status.HTTP_201_CREATED)
+
+class GenerateFlashcardsView(APIView):
+    """POST /api/ai/flashcards/generate/ - AI flashcard generation from topic or file."""
+    permission_classes = [permissions.IsAuthenticated]
+    # Allow multipart/form-data for files or regular json
+    parser_classes = (MultiPartParser, FormParser)
+
+    def post(self, request):
+        topic = request.data.get('topic', '')
+        num_cards = int(request.data.get('num_cards', 10))
+        
+        file_obj = request.FILES.get('file')
+        extracted_text = ""
+        
+        if file_obj:
+            filename = file_obj.name.lower()
+            topic = request.data.get('topic', 'Uploaded Document')
+            try:
+                if filename.endswith('.pdf'):
+                    doc = fitz.open(stream=file_obj.read(), filetype="pdf")
+                    for page in doc:
+                        extracted_text += page.get_text() + "\n"
+                elif filename.endswith('.ppt') or filename.endswith('.pptx'):
+                    prs = Presentation(file_obj)
+                    for slide in prs.slides:
+                        for shape in slide.shapes:
+                            if hasattr(shape, "text"):
+                                extracted_text += shape.text + "\n"
+                else:
+                    return Response({"error": "Unsupported file format. Please upload PDF or PPT."}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                return Response({"error": f"Error parsing file: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+                
+            extracted_text = extracted_text[:10000]
+            prompt_topic = f"the following text extracted from a document: \\n\\n{extracted_text}"
+        else:
+            prompt_topic = topic
+            if not topic:
+                return Response({"error": "Topic or file is required."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        cards = services.generate_flashcards(prompt_topic, num_cards)
+        return Response(cards, status=status.HTTP_200_OK)

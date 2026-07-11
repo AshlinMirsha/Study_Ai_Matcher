@@ -57,6 +57,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
             return
 
+        if msg_type in ('webrtc_offer', 'webrtc_answer', 'webrtc_ice_candidate'):
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'webrtc_signal',
+                    'sender_id': self.user.id,
+                    'signal_type': msg_type,
+                    'sdp': data.get('sdp'),
+                    'candidate': data.get('candidate'),
+                }
+            )
+            return
+
         if msg_type == 'message':
             content = (data.get('content') or '').strip()
             if not content:
@@ -93,6 +106,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'type': 'typing',
             'sender_id': event['sender_id'],
             'sender_name': event['sender_name'],
+        }))
+
+    async def webrtc_signal(self, event):
+        if event['sender_id'] == self.user.id:
+            return
+        await self.send(text_data=json.dumps({
+            'type': event['signal_type'],
+            'sender_id': event['sender_id'],
+            'sdp': event.get('sdp'),
+            'candidate': event.get('candidate'),
         }))
 
     # --- helpers --------------------------------------------------------
